@@ -1,0 +1,134 @@
+# vm: controller and compute1 running ubuntu server 24.04
+
+# from host
+
+# create a snapshot for controller vm
+#lvcreate --name controller_thin_snapshot --snapshot linux_vg/controller
+# undo changes
+#lvconvert --merge linux_vg/controller_thin_snapshot
+
+# create a snapshot for compute1 vm
+#lvcreate --name compute1_thin_snapshot --snapshot linux_vg/compute1
+# undo changes
+#lvconvert --merge linux_vg/compute1_thin_snapshot
+
+# from each node/vm
+
+# setting static ip
+# get the ethernet's name 
+# change address, 192.168.30.121, appropriately
+#ip a
+#sudo vim /etc/netplan/50-cloud-init.yaml
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    enp3s0:
+      dhcp4: false
+      dhcp6: false
+      addresses:
+        - 192.168.30.121/24
+      routes:
+        - to: default
+          via: 192.168.30.1
+      nameservers:
+        addresses: [192.168.30.1]
+    enp9s0:
+      dhcp4: false
+      dhcp6: false
+
+#sudo netplan apply
+
+#sudo vim /etc/hosts
+192.168.30.121 controller
+192.168.30.131 compute1
+192.168.30.141 block1
+192.168.30.151 object1
+192.168.30.152 object2
+
+# from compute1
+
+#echo "compute1" | sudo tee /etc/hostname
+#sudo hostname -F /etc/hostname
+
+# from controller
+
+#echo "controller" | sudo tee /etc/hostname
+#sudo hostname -F /etc/hostname
+
+# NTP
+#sudo apt install chrony -y 
+# verify
+#chronyc source
+
+# from other nodes
+
+# NTP
+#sudo apt install chrony -y 
+# comment out all pool, server and other sources
+#sudo vim /etc/chrony/chrony.conf
+server controller
+# verify
+#chronyc source
+
+# from all nodes
+
+# OpenStack 2025.1 Epoxy for Ubuntu 24.04 LTS
+#sudo add-apt-repository cloud-archive:epoxy
+
+# install services
+# Disable or remove any automatic update services because they can impact your OpenStack environment.
+
+# from compute1 
+
+#sudo apt install nova-compute
+
+# from client
+
+#sudo apt install python3-openstackclient
+
+# from controller
+
+#sudo apt install mariadb-server python3-pymysql -y
+#sudo vim /etc/mysql/mariadb.conf.d/99-openstack.cnf
+[mysqld]
+bind-address = 192.168.30.121
+default-storage-engine = innodb
+innodb_file_per_table = on
+max_connections = 4096
+collation-server = utf8_general_ci
+character-set-server = utf8
+
+#sudo systemctl restart mysql
+#sudo mysql_secure_installation
+
+# from controller
+
+#sudo apt install rabbitmq-server -y
+# Add the openstack user
+#rabbitmqctl add_user openstack <RABBIT_PASSWORD>
+#sudo rabbitmqctl set_permissions openstack ".*" ".*" ".*"
+
+#sudo apt install memcached python3-memcache -y
+# replace -l 127.0.0.1
+#sudo vim /etc/memcached.conf
+-l 192.168.30.121
+# restart memcached
+#sudo systemctl restart memcached
+
+#sudo apt install etcd-server -y
+#sudo vim /etc/default/etcd 
+ETCD_NAME="controller"
+ETCD_DATA_DIR="/var/lib/etcd"
+ETCD_INITIAL_CLUSTER_STATE="new"
+ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster-01"
+ETCD_INITIAL_CLUSTER="controller=http://192.168.30.121:2380"
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://192.168.30.121:2380"
+ETCD_ADVERTISE_CLIENT_URLS="http://192.168.30.121:2379"
+ETCD_LISTEN_PEER_URLS="http://0.0.0.0:2380"
+ETCD_LISTEN_CLIENT_URLS="http://192.168.30.121:2379"
+
+#sudo systemctl restart etcd
+
+# install services
+
