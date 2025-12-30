@@ -12,3 +12,115 @@ Undo changes, when needed
 #lvconvert --merge linux_vg/controller_thin_snapshot
 #lvconvert --merge linux_vg/compute1_thin_snapshot
 
+Create database from controller
+
+#mysql -u root -p
+CREATE DATABASE keystone;
+GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'localhost' IDENTIFIED BY 'YOUR_KEYSTONE_DBPASS';
+GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY 'YOUR_KEYSTONE_DBPASS';
+\q
+
+Install components
+
+#apt install keystone -y
+
+comment out exisiting connection under [database] section
+uncomment provider = fernet under [token] section
+#vim /etc/keystone/keystone.conf
+connection = mysql+pymysql://keystone:YOUR_KEYSTONE_DBPASS@controller/keystone
+
+Populate the Identity service database
+
+#su -s /bin/sh -c "keystone-manage db_sync" keystone
+
+Initialize Fernet key repositories
+
+#keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+#keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+
+Bootstrap the Identity service
+
+#keystone-manage bootstrap --bootstrap-password YOUR_ADMIN_PASS \
+--bootstrap-admin-url http://controller:5000/v3/ \
+--bootstrap-internal-url http://controller:5000/v3/ \
+--bootstrap-public-url http://controller:5000/v3/ \
+--bootstrap-region-id RegionOne
+
+Configure the Apache HTTP server
+
+#vim /etc/apache2/apache2.conf
+ServerName controller
+
+#systemctl restart apache2
+
+From client
+
+$vim ~/.profile
+export OS_USERNAME=admin
+export OS_PASSWORD=YOUR_ADMIN_PASS
+export OS_PROJECT_NAME=admin
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_AUTH_URL=http://controller:5000/v3
+export OS_IDENTITY_API_VERSION=3
+
+$source ~/.profile
+
+Create a domain, projects, users, and roles
+
+$openstack domain create --description "An Example Domain" example
+$openstack project create --domain default --description "Service Project" service
+$openstack project create --domain default --description "Demo Project" myproject
+$openstack user create --domain default --password-prompt myuser
+$openstack role create myrole
+$openstack role add --project myproject --user myuser myrole
+
+Verify operation
+
+remove OS_AUTH_URL OS_PASSWORD
+$vim ~/.profile
+export OS_USERNAME=admin
+export OS_PROJECT_NAME=admin
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_IDENTITY_API_VERSION=3
+
+$unset OS_AUTH_URL OS_PASSWORD
+
+$openstack --os-auth-url http://controller:5000/v3 \
+--os-project-domain-name Default --os-user-domain-name Default \
+--os-project-name admin --os-username admin token issue
+
+$openstack --os-auth-url http://controller:5000/v3 \
+--os-project-domain-name Default --os-user-domain-name Default \
+--os-project-name myproject --os-username myuser token issue
+
+Creating the scripts
+
+$vim admin-openrc
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_NAME=admin
+export OS_USERNAME=admin
+export OS_PASSWORD=YOUR_ADMIN_PASS
+export OS_AUTH_URL=http://controller:5000/v3
+export OS_IDENTITY_API_VERSION=3
+export OS_IMAGE_API_VERSION=2
+
+$vim demo-openrc
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_NAME=myproject
+export OS_USERNAME=myuser
+export OS_PASSWORD=YOUR_MYUSER_PASS
+export OS_AUTH_URL=http://controller:5000/v3
+export OS_IDENTITY_API_VERSION=3
+export OS_IMAGE_API_VERSION=2
+
+Using the scripts
+
+$. admin-openrc
+$openstack token issue
+
+$. demo-openrc
+$openstack token issue
