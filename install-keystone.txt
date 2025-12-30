@@ -1,0 +1,14 @@
+Install Keystone service
+
+Create a new restore point from host
+
+#lvremove linux_vg/controller_thin_snapshot
+#lvremove linux_vg/compute1_thin_snapshot
+#lvcreate --name controller_thin_snapshot --snapshot linux_vg/controller
+#lvcreate --name compute1_thin_snapshot --snapshot linux_vg/compute1
+
+Undo changes, when needed
+
+#lvconvert --merge linux_vg/controller_thin_snapshot
+#lvconvert --merge linux_vg/compute1_thin_snapshot
+
